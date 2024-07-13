@@ -1,0 +1,61 @@
+
+library(readxl)
+library(pROC)
+data_valid <- read_excel("E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA VERIFIKASI/SAMPEL VALIDASI BARU/BARU BANGET/UNTUK R.xlsx")
+data_valid
+matrix_valid <- as.data.frame(data_valid)
+matrix_valid
+str(matrix_valid)
+View(matrix_valid)
+
+Prob_RF <- read_excel("E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA VERIFIKASI/SAMPEL VALIDASI BARU/BARU BANGET/PROB_RF.xlsx")
+View(Prob_RF)
+str(Prob_RF)
+matrix <- as.matrix(Prob_RF)
+matrix
+str(matrix)
+roc_curve_valid_rf <- roc(data_valid$SUMBER, matrix[,2])
+roc_curve_valid_rf
+
+threshold <- roc_curve_valid_rf$thresholds
+plot(threshold, main = "Kurva Thresholds Validasi")
+t <-data.frame(threshold)
+sensi <- roc_curve_valid_rf$sensitivities
+sensi
+spesi <- roc_curve_valid_rf$specificities
+spesi
+plot(spesi, main = "Kurva Sensitivitas Validasi")
+plot(spesi, main = "Kurva Spesitifitas Validasi")
+s <- data.frame(sensi)
+sp <- data.frame(spesi)
+write.csv(s,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA BUAT BAB 4/Sensitivitas_Validasi.csv")
+write.csv(sp,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA BUAT BAB 4/Spesifisitas_Validasi.csv")
+write.csv(t,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA BUAT BAB 4/Threshold_Validasi.csv")
+
+plot(roc_curve_valid_rf, main = "Kurva ROC Validasi Random Forest dan MaxEnt", col = "red", lwd = 2)
+legend(x = 0.6, y = 0.4, legend = c("AUC RF", paste("Nilai AUC =", round(auc(roc_curve_valid_rf), 3))),
+       col = c("red", "black"), lty = c(1, NA), lwd = c(3, NA), bty = "n")
+
+plot.roc(smooth(roc_curve_valid1), main = "Kurva ROC", col = "red", lwd = 2)
+
+Prob_maxent <- read_excel("E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA VERIFIKASI/SAMPEL VALIDASI BARU/BARU BANGET/PROB_MAXENT.xlsx")
+Prob_maxent
+matrix1 <- as.matrix(Prob_maxent)
+matrix1
+View(matrix1)
+
+roc_curve_valid_maxent <- roc(data_valid$SUMBER, matrix1[,2])
+roc_curve_valid_maxent
+p <- roc_curve_valid_maxent$thresholds
+data.frame(p)
+roc_curve_valid2$sensitivities
+roc_curve_valid2$specificities
+plot(roc_curve_valid_maxent, add = TRUE, col = "blue", lwd = 2)
+legend(x = 0.6, y = 0.2, legend = c("AUC MaxEnt", paste("Nilai AUC =", round(auc(roc_curve_valid_maxent), 3))),
+       col = c("blue", "black"), lty = c(1, NA), lwd = c(3, NA), bty = "n")
+
+
+#Uji Wilcoxon
+wilcox.test(data_valid$`Predict RF`, data_valid$`Pred Maxen`, 
+            alternative = "two.sided",
+            mu = 0, paired = F, conf.level = 0.95)

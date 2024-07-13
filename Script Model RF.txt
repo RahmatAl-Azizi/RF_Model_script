@@ -1,0 +1,211 @@
+
+
+library(sf)
+library(raster)
+
+setwd("E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA LOG")
+
+CURAH_HUJAN1 <- raster("CH_NORM_REAL.tif")
+CURAH_HUJAN <- raster("CH_LOG.tif")
+ROAD1 <- raster("JARAK_JALAN_NORM.tif")
+ANGIN1 <- raster("ANGIN_LOG32.tif")
+LAND_COVER <- raster("LULC_GRASS1.tif")
+LST1 <- raster("LST_NORM.tif")
+NDVI <- raster("NDVI_NORM.tif")
+NDMI1 <- raster("NDMI_NORM.tif")
+SLOPE1 <- raster("SLOPE_LOG.tif")
+TVI1 <- raster("TVI_LOG.tif")
+TWI1 <- raster("TWI_LOG.tif")
+data1 <- stack(CURAH_HUJAN1,LST1,NDMI1,NDVI,ROAD1,LAND_COVER,TWI1,SLOPE1,TVI1)
+data1
+plotRGB(data1,4,3,1, stretch='lin')
+plot(NDMI1)
+plot(CURAH_HUJAN1)
+plot(NDVI)
+hist(NDVI)
+
+#Sampel Data
+library(ExtractTrainData)
+library(ggplot2)
+features <- st_read("E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/DATA/COBA LAGI/FORMAT ASC","SAMPEL2")
+features
+str(features)
+plot(features, add=TRUE)
+Out.colName<-In.colName<-"Hotspot"
+hotspot <- "Hotspot"
+sampel1 <- features[, hotspot] #memilih hanya satu kolom dari data vektor
+sampel1
+plot(sampel1,add=TRUE)
+e <- ExtractByPoint(data1, features,In.colName,Out.colName )
+e$LULC1.TA<-factor(e$LULC1.TA, level= c("2","5","7","8","10","11"))
+e
+str(e)
+write.csv(e,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA LOG/TRAINING_DATA_3.csv")
+
+#Memulai Prediksi
+library(foreign)
+library(caret)
+library(randomForest)
+library(e1071)
+library(Metrics)
+library(pROC)
+
+## Import Data
+data <- read.csv("E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA LOG/TRAINING_DATA_3.csv")
+## Check data
+View(data)
+str(data)
+d<-within(data,rm("X"))
+d
+str(d)
+d$Hotspot<-as.factor(d$Hotspot)
+d$LULC1.TA<-factor(d$LULC1.TA, level= c("2","5","7","8","10","11"))
+str(d)
+table(d$Hotspot)
+table(d$LULC1.TA)
+
+#Data Partition
+## Splitting data
+## 70% for training and 30% for testing
+set.seed(123)
+ind <- sample(2, nrow(d), replace = TRUE, prob = c(0.70, 0.30))
+train <- d[ind==1,]
+test <- d[ind==2,]
+train
+test
+str(train)
+str(test)
+View(train)
+View(test)
+write.csv(train,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Data Train dan Test/TRAINING_DATA.csv")
+write.csv(test,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Data Train dan Test/TESTING_DATA.csv")
+
+#Memulai membuat model
+rf <- randomForest(Hotspot ~ ., data = train)
+print(rf)
+
+## Plot the error rate of RandomForest
+plot(rf, main = "Error rate of Random Forest")
+
+## Find the optimal mtry value to minimum OOB (out of bag) value
+## 10 is the number of variables
+mtry <- tuneRF(train[,-10], train[,10],
+               stepFactor = 1.5, 
+               plot = TRUE, 
+               ntreeTry = 1000,
+               trace = TRUE,
+               improve = 0.01)
+print(mtry)
+
+## Building RF model again using best mtry value
+rf <- randomForest(Hotspot~., data=train,
+                   ntree = 1000,
+                   mtry =3 ,
+                   importance = TRUE)
+print(rf)
+plot(rf, main = "Error rate of Random Forest")
+error_rf <-(rf$err.rate)
+error_rf
+write.csv(error_rf,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Data Train dan Test/ERROR_RF.csv")
+
+View(rf$votes)
+votes <- (rf$votes)
+write.csv(votes,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Data Train dan Test/Voting.csv")
+
+#Menghitung Matriks Konfusi Dari Data Training
+konfusi <- rf$predicted
+konfusi
+predict_rf <- (rf$votes)
+print(predict_rf)
+str(predict_rf)
+matrix_rf_train <- confusionMatrix(konfusi, train$Hotspot)
+matrix_rf_train
+
+# Menghitung AUC dari konfusi matriks Data Training
+auc_rf_train <- roc(train$Hotspot, predict_rf[,1])
+print(auc_rf_train)
+
+# Membuat Plot kurva AUC Data Training
+plot(auc_rf_train, main = "Kurva ROC Random Forest ", col = "blue", lwd = 2)
+auc_score_test <- auc(auc_rf_train)
+cat("AUC Score (Training Data):", auc_score_test, "\n")
+
+# Extract details of a specific tree (e.g., the first tree)
+tree_details <- getTree(rf, k = 1, labelVar = TRUE)
+tree_details1 <- getTree(rf, k = 1000, labelVar = TRUE)
+write.csv(tree_details,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA BUAT BAB 4/DATA_POHON_1.csv")
+write.csv(tree_details1,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/DATA BUAT BAB 4/DATA_POHON_1000.csv")
+
+# View the details of the splits in the tree
+print(tree_details)
+View(tree_details)
+# Extract mean decrease in Gini for each feature
+importance_gini <- importance(rf, type = 2)  # type = 2 indicates mean decrease in Gini
+print(importance_gini)
+
+## Menampilkan variable importance dari random forest
+varImpPlot(rf,
+           sort = T,
+           n.var = 9,
+           main = "Important Variables")
+VI <- importance(rf)
+View(VI)
+write.csv(VI,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Data Train dan Test/Var_Import.csv")
+varUsed(rf)
+par(mfrow=c(1,1))
+
+## Prediction dan Confusion Matrix untuk Test Data
+## RandomForest 
+pred_test <- predict(rf, test)
+pred_test
+confusionMatrix(pred_test, test$Hotspot)
+
+#Prediksi image dengan model random forest yang sudah di kembangkan dan save output
+data1
+prediksi<-predict(data1,rf,type='prob',progress='window')
+prediksi
+par(mfrow=c(1,1))
+plot(prediksi)
+writeRaster(prediksi,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Model_RF_Prob_BARU.tif",
+            format="GTiff", overwrite=TRUE)
+
+data1
+prediksi1<-predict(data1,rf,type='response',progress='window')
+prediksi1
+par(mfrow=c(1,1))
+plot(prediksi1)
+writeRaster(prediksi1,"E:/PELATIHAN QGIS KEBAKARAN HUTAN/1. TA GUA/OLAH PRA KEJADIAN/HASIL RF/Model_RF_Raw_BARU.tif",
+            format="GTiff", overwrite=TRUE)
+
+# Melanjutkan script sebelumnya dengan memperoleh nilai probabilitas prediksi
+# dari model Random Forest untuk data uji
+pred_test_prob <- predict(rf, test, type = "prob")
+View(pred_train_prob)
+pred_test_prob
+
+# Membuat objek ROC untuk data uji
+roc_curve_test <- roc(test$Hotspot, pred_test_prob[,1]) # menggunakan probabilitas kelas positif
+roc_curve_test
+
+# Plot kurva ROC untuk data latih
+plot(roc_curve_train, main = "ROC Curve", col = "blue", lwd = 2)
+
+# Plot kurva ROC untuk data uji (opsional)
+plot(roc_curve_test, add = TRUE, col = "red", lwd = 2)
+plot(roc_curve_test, col = "red", lwd = 3)
+
+# Tambahkan teks untuk AUC
+text(x = 0.3, y = 0.5, labels = paste("AUC =", round(auc(roc_curve_test), 2)), adj = 0.5)
+# Tambahkan judul
+title(main = "Kurva ROC Random Forest", sub = NULL, line=2.5)
+# Buat legenda
+legend("bottomright", legend = c("AUC Testing", paste("Nilai AUC =", round(auc(roc_curve_test), 4))),
+       col = c("red", "black"), lty = c(1, NA), lwd = c(2, NA), bty = "n")
+
+
+# Hitung AUC untuk data latih dan data uji
+auc_score_train <- auc(roc_curve_train)
+auc_score_test <- auc(roc_curve_test)
+
+cat("AUC Score (Training Data):", auc_score_train, "\n")
+cat("AUC Score (Test Data):", auc_score_test, "\n")
